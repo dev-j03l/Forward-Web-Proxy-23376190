@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 
 public class ClientHandler implements Runnable {
     private final Socket clientSocket;
@@ -19,15 +20,13 @@ public class ClientHandler implements Runnable {
             OutputStream rawOut = socket.getOutputStream();
             BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn, StandardCharsets.ISO_8859_1))
         ) {
-            StringBuilder request = new StringBuilder();
-            String line;
 
             // For first line of header: (e.g "GET http://example.com/ HTTP/1.1")
-            String requestLine = line = reader.readLine();
+            String requestLine = reader.readLine();
 
             if (requestLine == null || requestLine.isEmpty()) return;
             
-            System.out.println("Raw Request Line: "+ line);
+            System.out.println("Raw Request Line: "+ requestLine);
 
             String[] parts = requestLine.split(" ");
             if (parts.length < 3){
@@ -35,13 +34,31 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
+            String method = parts[0];
+            String target = parts[1];
+            String httpVersion = parts[2];
+
+            String line;
+            HashMap<String, String> headers = new HashMap<>();
+
             while((line = reader.readLine()) != null) {
-                request.append(line).append("\r\n");
                 if(line.isEmpty()) break;
+
+                int colonIndex = line.indexOf(":");
+                if (colonIndex > 0) {
+                    String key = line.substring(0, colonIndex).trim();
+                    String value = line.substring(colonIndex + 1).trim();
+                    headers.put(key, value);
+                } 
             }
 
+            System.out.println("Method: " + method);
+            System.out.println("Target: "+ target);
+            System.out.println("HTTP Version: "+ httpVersion);
+            String hostHeader = headers.get("Host");
+            System.out.println("Host Header: " + hostHeader);
+
             System.out.println("["+ threadName +"] --- Incoming Request ---");
-            System.out.println(request);
 
             String body = "Proxy is running. \n (Forwarding not implemented yet.)\n";
             byte[] bodyBytes = body.getBytes(StandardCharsets.ISO_8859_1);
