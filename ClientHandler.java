@@ -37,7 +37,6 @@ public class ClientHandler implements Runnable {
 
             String method = parts[0];
             String target = parts[1];
-            String httpVersion = parts[2];
 
             String line;
             HashMap<String, String> headers = new HashMap<>();
@@ -69,16 +68,17 @@ public class ClientHandler implements Runnable {
                 port = (hp.length == 2) ? Integer.parseInt(hp[1]) : 443;
                 path = ""; // Not used for CONNECT requests
             } else {
-                if(target.startsWith("http://")) {
-                    String url = target.substring(7); // We strip the http:// from the target
+                if(target.startsWith("http://") || target.startsWith("https://")) {
+                    boolean https = target.startsWith("https://");
+                    String url = target.substring(https? 8 : 7); // We strip the http:// from the target
 
                     int slashIndex = url.indexOf("/");
-                    String hostPart = url.substring(0, slashIndex);
+                    String hostPart = (slashIndex != -1) ?  url.substring(0, slashIndex) : url;
                     path = (slashIndex != -1) ? url.substring(slashIndex) : "/"; 
 
                     String[] hp = hostPart.split(":", 2);
                     host = hp[0];
-                    port = (hp.length == 2) ? Integer.parseInt(hp[1]) : 80;
+                    port = (hp.length == 2) ? Integer.parseInt(hp[1]) : (https? 443 : 80);
                 } else if (target.startsWith("/")) {
                     // origin-form: host comes from host header
                     path = target;
@@ -87,6 +87,7 @@ public class ClientHandler implements Runnable {
                         System.out.println("No Host Header Present; cannot route request");
                         return;
                     }
+                    hostHeader = hostHeader.trim();
 
                     String[] hp = hostHeader.split(":", 2);
                     host = hp[0];
