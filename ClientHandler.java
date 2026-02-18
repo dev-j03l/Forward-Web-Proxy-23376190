@@ -2,6 +2,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Map;
 
 public class ClientHandler implements Runnable {
     // clientSocket number
@@ -37,6 +38,7 @@ public class ClientHandler implements Runnable {
 
             String method = parts[0];
             String target = parts[1];
+            String httpVer = parts[2];
 
             String line;
             HashMap<String, String> headers = new HashMap<>();
@@ -70,7 +72,7 @@ public class ClientHandler implements Runnable {
             } else {
                 if(target.startsWith("http://") || target.startsWith("https://")) {
                     boolean https = target.startsWith("https://");
-                    String url = target.substring(https? 8 : 7); // We strip the http:// from the target
+                    String url = target.substring(https? 8 : 7); // We strip the http(s):// from the target
 
                     int slashIndex = url.indexOf("/");
                     String hostPart = (slashIndex != -1) ?  url.substring(0, slashIndex) : url;
@@ -101,21 +103,62 @@ public class ClientHandler implements Runnable {
 
             System.out.println("ROUTE => " + method + " " + host + ":" + port + " " + path);
 
-            System.out.println("["+ threadName +"] --- Incoming Request ---");
+            if (method.equalsIgnoreCase("CONNECT")) {
+                String body = "Connect tunnelling not implemented yet. \n";
+                byte[] bodyBytes = body.getBytes(StandardCharsets.ISO_8859_1);
 
-            String body = "Proxy is running. \n (Forwarding not implemented yet.)\n";
-            byte[] bodyBytes = body.getBytes(StandardCharsets.ISO_8859_1);
-
-            String response = 
-                    "HTTP/1.1 200 OK\r\n" +
+                String resp = 
+                    "HTTP/1.1 501 Not Implemented\r\n" +
                     "Content-Type: text/plain; charset=utf-8\r\n" +
                     "Content-Length: " + bodyBytes.length + "\r\n" +
                     "Connection: close\r\n" +
                     "\r\n";
+                
+                rawOut.write(resp.getBytes(StandardCharsets.ISO_8859_1));
+                rawOut.write(bodyBytes);
+                rawOut.flush();
+            }
+
+            try(Socket serverSocket = new Socket(host, port)){
+                serverSocket.setSoTimeout(15000);
+
+                InputStream serverIn = serverSocket.getInputStream();
+                OutputStream serverOut = serverSocket.getOutputStream();
+
+                String outBoundRequestLine = method + " " + path + " " + httpVer + "\r\n";
+                serverOut.write(outBoundRequestLine.getBytes(StandardCharsets.ISO_8859_1));
+
+                for(Map.Entry<String, String> entry : headers.entrySet()){
+                    String key = entry.getKey();
+                    String value = entry.getValue();
+
+                    if(key.equalsIgnoreCase("proxy-connection")) continue;
+                    if(key.equalsIgnoreCase("connection")) continue;
+
+                    if(key.equalsIgnoreCase("host")) {
+                        serverOut.write(("Host: " + value + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                    } else {
+                        serverOut.write((key + ": " + value + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                    }
+                }
+
+                if(!headers.containsKey("host")){
+                    serverOut.write(("Host: " + host + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                }
+
+                serverOut.write(("Connection: close \r\n").getBytes(StandardCharsets.ISO_8859_1));
+                serverOut.write(("\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                serverOut.flush();
+
+                byte[] buffer = new byte[8192];
+                int n;
+                while ((n = serverIn.read(buffer)) != -1){
+                    rawOut.write(buffer, 0, n);
+                }
+                rawOut.flush();
+            }
+
             
-            rawOut.write(response.getBytes(StandardCharsets.ISO_8859_1));
-            rawOut.write(bodyBytes);
-            rawOut.flush();
         } catch (IOException e){
             System.err.println("["+ threadName + "] ClientHandler Error: "+ e.getMessage());
         }
