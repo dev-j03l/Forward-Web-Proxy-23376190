@@ -9,29 +9,29 @@ public class ClientHandler implements Runnable {
     private final Socket clientSocket;
 
     // Constructor
-    public ClientHandler(Socket clientSocket){
+    public ClientHandler(Socket clientSocket) {
         this.clientSocket = clientSocket;
     }
 
     // As we implement runnable we need to override the default interface method.
     @Override
-    public void run(){
+    public void run() {
         String threadName = Thread.currentThread().getName();
-        
+
         try (
-            Socket socket = this.clientSocket;
-            InputStream rawIn = socket.getInputStream();
-            OutputStream rawOut = socket.getOutputStream();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn, StandardCharsets.ISO_8859_1))
-        ) {
+                Socket socket = this.clientSocket;
+                InputStream rawIn = socket.getInputStream();
+                OutputStream rawOut = socket.getOutputStream();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn, StandardCharsets.ISO_8859_1))) {
 
             // For first line of header: (e.g "GET http://example.com/ HTTP/1.1")
             String requestLine = reader.readLine();
 
-            if (requestLine == null || requestLine.isEmpty()) return;
+            if (requestLine == null || requestLine.isEmpty())
+                return;
 
             String[] parts = requestLine.split(" ");
-            if (parts.length < 3){
+            if (parts.length < 3) {
                 System.out.println("Invalid Request Line");
                 return;
             }
@@ -43,20 +43,20 @@ public class ClientHandler implements Runnable {
             String line;
             HashMap<String, String> headers = new HashMap<>();
 
-            while((line = reader.readLine()) != null) {
-                if(line.isEmpty()) break;
+            while ((line = reader.readLine()) != null) {
+                if (line.isEmpty())
+                    break;
 
                 int colonIndex = line.indexOf(":");
                 if (colonIndex > 0) {
                     String key = line.substring(0, colonIndex).trim();
                     String value = line.substring(colonIndex + 1).trim();
                     headers.put(key.toLowerCase(), value);
-                } 
+                }
             }
 
-
             // Extracting the host and port from the requestLine target.
-            // There are two cases. 
+            // There are two cases.
             // 1) HTTP - GET we are provided HOST, PORT (default = 80) and Path
             // 2) HTTPS - CONNECT example.com:443 only HOST and PORT
             String host = "";
@@ -64,28 +64,28 @@ public class ClientHandler implements Runnable {
             String path = "";
 
             // CONNECT: target is usually "host:port"
-            if(method.equalsIgnoreCase("CONNECT")) {
+            if (method.equalsIgnoreCase("CONNECT")) {
                 String[] hp = target.split(":", 2);
                 host = hp[0];
                 port = (hp.length == 2) ? Integer.parseInt(hp[1]) : 443;
                 path = ""; // Not used for CONNECT requests
             } else {
-                if(target.startsWith("http://") || target.startsWith("https://")) {
+                if (target.startsWith("http://") || target.startsWith("https://")) {
                     boolean https = target.startsWith("https://");
-                    String url = target.substring(https? 8 : 7); // We strip the http(s):// from the target
+                    String url = target.substring(https ? 8 : 7); // We strip the http(s):// from the target
 
                     int slashIndex = url.indexOf("/");
-                    String hostPart = (slashIndex != -1) ?  url.substring(0, slashIndex) : url;
-                    path = (slashIndex != -1) ? url.substring(slashIndex) : "/"; 
+                    String hostPart = (slashIndex != -1) ? url.substring(0, slashIndex) : url;
+                    path = (slashIndex != -1) ? url.substring(slashIndex) : "/";
 
                     String[] hp = hostPart.split(":", 2);
                     host = hp[0];
-                    port = (hp.length == 2) ? Integer.parseInt(hp[1]) : (https? 443 : 80);
+                    port = (hp.length == 2) ? Integer.parseInt(hp[1]) : (https ? 443 : 80);
                 } else if (target.startsWith("/")) {
                     // origin-form: host comes from host header
                     path = target;
                     String hostHeader = headers.get("host");
-                    if(hostHeader == null){
+                    if (hostHeader == null) {
                         System.out.println("No Host Header Present; cannot route request");
                         return;
                     }
@@ -104,22 +104,10 @@ public class ClientHandler implements Runnable {
             System.out.println("ROUTE => " + method + " " + host + ":" + port + " " + path);
 
             if (method.equalsIgnoreCase("CONNECT")) {
-                String body = "Connect tunnelling not implemented yet. \n";
-                byte[] bodyBytes = body.getBytes(StandardCharsets.ISO_8859_1);
-
-                String resp = 
-                    "HTTP/1.1 501 Not Implemented\r\n" +
-                    "Content-Type: text/plain; charset=utf-8\r\n" +
-                    "Content-Length: " + bodyBytes.length + "\r\n" +
-                    "Connection: close\r\n" +
-                    "\r\n";
                 
-                rawOut.write(resp.getBytes(StandardCharsets.ISO_8859_1));
-                rawOut.write(bodyBytes);
-                rawOut.flush();
             }
 
-            try(Socket serverSocket = new Socket(host, port)){
+            try (Socket serverSocket = new Socket(host, port)) {
                 serverSocket.setSoTimeout(15000);
 
                 InputStream serverIn = serverSocket.getInputStream();
@@ -128,21 +116,23 @@ public class ClientHandler implements Runnable {
                 String outBoundRequestLine = method + " " + path + " " + httpVer + "\r\n";
                 serverOut.write(outBoundRequestLine.getBytes(StandardCharsets.ISO_8859_1));
 
-                for(Map.Entry<String, String> entry : headers.entrySet()){
+                for (Map.Entry<String, String> entry : headers.entrySet()) {
                     String key = entry.getKey();
                     String value = entry.getValue();
 
-                    if(key.equalsIgnoreCase("proxy-connection")) continue;
-                    if(key.equalsIgnoreCase("connection")) continue;
+                    if (key.equalsIgnoreCase("proxy-connection"))
+                        continue;
+                    if (key.equalsIgnoreCase("connection"))
+                        continue;
 
-                    if(key.equalsIgnoreCase("host")) {
+                    if (key.equalsIgnoreCase("host")) {
                         serverOut.write(("Host: " + value + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
                     } else {
                         serverOut.write((key + ": " + value + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
                     }
                 }
 
-                if(!headers.containsKey("host")){
+                if (!headers.containsKey("host")) {
                     serverOut.write(("Host: " + host + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
                 }
 
@@ -152,15 +142,14 @@ public class ClientHandler implements Runnable {
 
                 byte[] buffer = new byte[8192];
                 int n;
-                while ((n = serverIn.read(buffer)) != -1){
+                while ((n = serverIn.read(buffer)) != -1) {
                     rawOut.write(buffer, 0, n);
                 }
                 rawOut.flush();
             }
 
-            
-        } catch (IOException e){
-            System.err.println("["+ threadName + "] ClientHandler Error: "+ e.getMessage());
+        } catch (IOException e) {
+            System.err.println("[" + threadName + "] ClientHandler Error: " + e.getMessage());
         }
     }
 }

@@ -5,7 +5,7 @@ public class ProxyServer {
 
     private final int port; // Our server should be accessable at the port/should stay constant.
 
-    public ProxyServer(int port){
+    public ProxyServer(int port) {
         this.port = port;
     }
 
@@ -13,7 +13,7 @@ public class ProxyServer {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("ProxyServer listening on Port: " + port + "\n");
 
-            while(true) {
+            while (true) {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Accepted connection from: " + clientSocket.getRemoteSocketAddress());
 
@@ -24,16 +24,16 @@ public class ProxyServer {
         }
     }
 
-    public static void main(String[] args){
+    public static void main(String[] args) {
         int port = 8080;
         if (args.length == 1) {
             port = Integer.parseInt(args[0]);
         }
-        
-        try{
+
+        try {
             new ProxyServer(port).start();
-        } catch (IOException e){
-            System.err.println("Failed to start Proxy Server: "+  e.getMessage());
+        } catch (IOException e) {
+            System.err.println("Failed to start Proxy Server: " + e.getMessage());
             e.printStackTrace();
         }
     }
