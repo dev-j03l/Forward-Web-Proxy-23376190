@@ -1,16 +1,21 @@
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
 public class ClientHandler implements Runnable {
-    // clientSocket number
     private final Socket clientSocket;
+    private final RequestListener requestListener;
 
-    // Constructor
     public ClientHandler(Socket clientSocket) {
+        this(clientSocket, null);
+    }
+
+    public ClientHandler(Socket clientSocket, RequestListener requestListener) {
         this.clientSocket = clientSocket;
+        this.requestListener = requestListener;
     }
 
     // As we implement runnable we need to override the default interface method.
@@ -103,8 +108,58 @@ public class ClientHandler implements Runnable {
 
             System.out.println("ROUTE => " + method + " " + host + ":" + port + " " + path);
 
+            if (requestListener != null) {
+                requestListener.onRequest(new RequestRecord(
+                        Instant.now(), method, host, port, path,
+                        clientSocket.getRemoteSocketAddress().toString()));
+            }
+
             if (method.equalsIgnoreCase("CONNECT")) {
-                
+                // HTTPS tunnel: connect to origin, send 200 to client, then forward bytes both ways
+                try (Socket serverSocket = new Socket(host, port)) {
+                    serverSocket.setSoTimeout(0); // long-lived TLS connection
+                    InputStream serverIn = serverSocket.getInputStream();
+                    OutputStream serverOut = serverSocket.getOutputStream();
+
+                    rawOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1));
+                    rawOut.flush();
+
+                    Thread clientToServer = new Thread(() -> {
+                        byte[] buf = new byte[8192];
+                        try {
+                            int n;
+                            while ((n = rawIn.read(buf)) != -1) {
+                                serverOut.write(buf, 0, n);
+                                serverOut.flush();
+                            }
+                            serverSocket.shutdownOutput();
+                        } catch (IOException e) {
+                            // Client or server closed; stop tunnel
+                        }
+                    }, "client->server");
+                    Thread serverToClient = new Thread(() -> {
+                        byte[] buf = new byte[8192];
+                        try {
+                            int n;
+                            while ((n = serverIn.read(buf)) != -1) {
+                                rawOut.write(buf, 0, n);
+                                rawOut.flush();
+                            }
+                        } catch (IOException e) {
+                            // Server or client closed; stop tunnel
+                        }
+                    }, "server->client");
+
+                    clientToServer.start();
+                    serverToClient.start();
+                    try {
+                        clientToServer.join();
+                        serverToClient.join();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                return;
             }
 
             try (Socket serverSocket = new Socket(host, port)) {
